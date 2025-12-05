@@ -1,9 +1,11 @@
 import cv2  # best avaliable library for camera operations
-import serial  # library to read the motion detector input
+
+# import serial  # library to read the motion detector input
 import time  # for managing the buffer time
 from collections import deque  # a list that allows for deletion after a specific time
 import os  # for saving files
 
+#  blah blah blah
 port = "COM3"  # moeeedddd edit tis  #port for arduino
 baud = 9600  # match to the arduino code (we are using arduino right??!)
 buffer_seconds = 15  # time recorded before the event
