@@ -1,101 +1,93 @@
-import cv2  # best avaliable library for camera operations
-
-# import serial  # library to read the motion detector input
-import time  # for managing the buffer time
-from collections import deque  # a list that allows for deletion after a specific time
-import os  # for saving files
-
-#  blah blah blah
-port = "COM3"  # moeeedddd edit tis  #port for arduino
-baud = 9600  # match to the arduino code (we are using arduino right??!)
-buffer_seconds = 15  # time recorded before the event
-post_seconds = 15  # time recorded after the event
-vid_location = "events"  # folder to save the video files of the events
-
-if not os.path.exists(vid_location):  # check if folder exists
-    os.makedirs(vid_location)
+import cv2
 
 
-# now we setup the cameraaaaa and seriaaaaal
-ser = serial.Serial(port, baud, timeout=1)  # connection to sensor
-cap = cv2.VideoCapture(0)  # starts the camera capturing
+def motion_detection(cam):
+    # set video source and error check
+    cap = cv2.VideoCapture(cam)
+    if not cap.isOpened():
+        print("Error: Could not open camera.")
+        return
 
-fps = 20
-buffer = deque(maxlen=FPS * buffer_seconds)  # how much time we want in the buffer
-state = "idle"  # when nothing happening
-post_timer = 0  # timer for post motion caputuring
-event_number = 1  # will number each event
-motion_writer = None  # main thingy used for motion recording
-fourcc = cv2.VideoWriter_fourcc(*"mp4v")  # save the file as mp4
+    # get the video frames' width and height for proper saving of videos
+    # where 3, 4 and CAP_PROP_FPS are propIDs to get certain informations about a video stream
+    # check https://docs.opencv.org/2.4/modules/highgui/doc/reading_and_writing_images_and_video.html#videocapture-get
+    frame_width = int(cap.get(3))
+    frame_height = int(cap.get(4))
+    fps = int(cap.get(cv2.CAP_PROP_FPS))
 
+    if (
+        fps == 0.0
+    ):  # video stream may sometimes return no fps value in which case we assume it to be 30
+        fps = 30.0
 
-# creating VIDEO WRITER nooww
-def new_writer(folder, prefix, number, ext=".mp4"):
-    filename = os.path.join(folder, f"{prefix}_{number}{ext}")
-    return cv2.VideoWriter(
-        filename, fourcc, FPS, (640, 480)
-    )  # setting resolution of vid
+    frame_size = (frame_width, frame_height)
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    output_video = "recorded.mp4"
 
+    # create the `VideoWriter()` object
+    out = cv2.VideoWriter(output_video, fourcc, fps, frame_size)
 
-# now da main loopy doopy
-try:  # for handling errors and making sure Python dont crash out
+    # Create Background Subtractor MOG2 object
+    backSub = cv2.createBackgroundSubtractorMOG2()
+
     while True:
-        ret, frame = cap.read()  # basically reads frame and gives false if smth wrong
-        if not ret:
-            print("frame ni read ho ri Saaar")
+        # Capture frame-by-frame
+        ret, frame = cap.read()
+
+        if ret:
+            # Apply background subtraction
+            fg_mask = backSub.apply(frame)
+
+            # apply global threshol to remove shadows
+            retval, mask_thresh = cv2.threshold(fg_mask, 180, 255, cv2.THRESH_BINARY)
+
+            # set the kernal
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+            # Apply erosion
+            mask_eroded = cv2.morphologyEx(mask_thresh, cv2.MORPH_OPEN, kernel)
+
+            # Find contours
+            contours, hierarchy = cv2.findContours(
+                mask_eroded, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+            )
+
+            min_contour_area = 500  # minimum area to consider for movement
+            # filtering
+            large_contours = [
+                cnt for cnt in contours if cv2.contourArea(cnt) > min_contour_area
+            ]
+            frame_out = frame.copy()
+
+            # check if any big changes are detect, only then save  and draw
+            if (
+                len(large_contours) > 0
+            ):  # this simple check allows for only writing when there is some movement
+                # TODO: add timer after detected movement
+                # TODO: add current time at corner of screen
+                # TODO: add 10second buffer for previous frames before movement
+                for cnt in large_contours:
+                    x, y, w, h = cv2.boundingRect(cnt)
+                    frame_out = cv2.rectangle(
+                        frame, (x, y), (x + w, y + h), (0, 0, 200), 3
+                    )
+
+                out.write(frame_out)
+            # saving the video file
+
+            # Display the resulting frame
+            cv2.imshow("Frame_final", frame_out)
+
+            # Press Q on keyboard to exit
+            if cv2.waitKey(1) & 0xFF == ord("q"):
+                break
+        else:
             break
 
-    motion = 0  # idle state, no motion
-    if ser.in_waiting > 0:
-        line = ser.readline().decode().strip()  # basically read info from arduino
-        if line in ["0", "1"]:
-            motion = int(line)  # converting into integer
+    # When everything done, release the video capture and writer object
+    cap.release()
+    out.release()
+    # Closes all the frames
+    cv2.destroyAllWindows()
 
-    if state == "idle":  # no action
-        buffer.append(frame)  # keep only 15 seconds in memory
-        if motion == 1:
-            print(
-                f"EVENT {event_number}: Motion detected"
-            )  # savin the buffer with the number
-        # now we need to clip the buffer and the video togethaa
-        motion_writer = new_writer(vid_location, "event", event_number, ".mp4")
-        for f in buffer:
-            motion_writer.write(f)
-        state = "recording"
-        post_timer = 0
-        writer.release()  # closing da file
 
-        # starting motion recording
-        motion_writer = new_writer(vid_location, "event", event_number, ".mp4")
-        motion_write4r.write(frame)
-        state = "recording"  # switching state
-        post_timer = 0  # reset post timer
-
-    # recording mode (motion is happening)
-    elif state == "recording":
-        motion_writer.write(frame)  # saves current frame
-        if motion == 0:
-            print(f"EVENT {event_number}: Motion ended -> start post recording")
-            state = "postrecord"  # switch to post recording
-            post_timer = time.time()  # record sstart time
-
-    # now the post recording after the event
-    elif state == "postrecord":
-        motion_writer.writer(frame)  # saving the post recording frames
-
-        # first check if 15 seconds have passed
-        if time.time() - post_timer >= post_seconds:
-            print(f"EVENT {event_number}: Post recording done, returning to idle")
-            motion_writer, release()  # closing the video file
-            motion_writer = None  # reset writer
-            event_number += 1  # increasing the number of event
-            state = "idle"  # return to normal state
-            buffer.clear()  # emptying buffer for next event
-
-finally:
-    cap.release()  # camera released
-    cv2.destroyAllWindows()  # xclose da cv windows
-    if motion_writer:
-        motion_writer.release()  # close open vid files
-    ser.close()  # close serial port
-    print("pRoGrAm TeRmInAtEd")
+motion_detection(0)
