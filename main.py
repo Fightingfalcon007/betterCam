@@ -10,7 +10,7 @@ PRE_MOTION_BUFFER_SECONDS = 3
 RECORDER_TIMEOUT_SECONDS = 10
 MIN_CONTOUR_AREA = 500  # Minimum area to consider as valid motion
 OUTPUT_FILENAME = "recorded.mp4"
-
+# testing one two three
 # ==========================================
 # INITIALIZATION
 # ==========================================
